@@ -193,47 +193,50 @@
         "  SUM(unowned_count) AS total_unowned_columns,\r\n",
         "  SUM(uncertified_count) AS total_uncertified_columns,\r\n",
         "  COUNT(DISTINCT system_name) AS total_source_systems,\r\n",
-        "  ROUND(100.0 * (SUM(total_columns) - SUM(unowned_count)) / NULLIF(SUM(total_columns), 0), 1) AS pct_owned\r\n",
-        "FROM metadata_governance.gold.table_governance_summary;"
+        "  ROUND(100.0 * (SUM(total_columns) - SUM(unowned_count)) / NULLIF(SUM(total_columns), 0), 1) AS pct_owned,\r\n",
+        "  ROUND(100.0 * (SUM(total_columns) - SUM(uncertified_count)) / NULLIF(SUM(total_columns), 0), 1) AS pct_certified\r\n",
+        "FROM metadata_governance.gold.table_governance_summary_logical;"
       ]
     },
     {
       "name": "ed4ca08e",
       "displayName": "maturity_distribution",
       "queryLines": [
-        "SELECT maturity_tier, COUNT(*) as table_count\r\n",
-        "FROM metadata_governance.gold.table_governance_summary\r\n",
-        "GROUP BY maturity_tier"
+        "SELECT maturity_tier, COUNT(*) AS table_count\r\n",
+        "FROM metadata_governance.gold.table_governance_summary_logical\r\n",
+        "GROUP BY maturity_tier;"
       ]
     },
     {
       "name": "71b9ecb2",
       "displayName": "completeness_by_table",
       "queryLines": [
-        "SELECT \r\n",
-        "  table_id,\r\n",
-        "  table_name, \r\n",
-        "  schema_name, \r\n",
-        "  database_name, \r\n",
-        "  table_completeness_pct, \r\n",
-        "  maturity_tier \r\n",
-        "FROM metadata_governance.gold.table_governance_summary \r\n",
-        "ORDER BY table_completeness_pct ASC"
+        "SELECT\r\n",
+        "  logical_table_key,\r\n",
+        "  table_name,\r\n",
+        "  schema_name,\r\n",
+        "  database_name,\r\n",
+        "  system_name,\r\n",
+        "  total_columns,\r\n",
+        "  table_completeness_pct,\r\n",
+        "  maturity_tier\r\n",
+        "FROM metadata_governance.gold.table_governance_summary_logical\r\n",
+        "ORDER BY table_completeness_pct ASC;"
       ]
     },
     {
       "name": "b7e1e9ba",
       "displayName": "compliance_risk",
       "queryLines": [
-        "SELECT \r\n",
-        "  table_id,\r\n",
-        "  table_name, \r\n",
-        "  pii_non_compliant_count, \r\n",
-        "  unowned_count, \r\n",
-        "  uncertified_count \r\n",
-        "FROM metadata_governance.gold.table_governance_summary \r\n",
-        "WHERE pii_non_compliant_count > 0 OR unowned_count > 0 \r\n",
-        "ORDER BY pii_non_compliant_count DESC"
+        "SELECT\r\n",
+        "  logical_table_key,\r\n",
+        "  table_name,\r\n",
+        "  pii_non_compliant_count,\r\n",
+        "  unowned_count,\r\n",
+        "  uncertified_count\r\n",
+        "FROM metadata_governance.gold.table_governance_summary_logical\r\n",
+        "WHERE pii_non_compliant_count > 0 OR unowned_count > 0\r\n",
+        "ORDER BY pii_non_compliant_count DESC;"
       ]
     },
     {
@@ -242,19 +245,19 @@
       "queryLines": [
         "SELECT column_name, row_completeness_pct, pii_non_compliant, unowned, uncertified\r\n",
         "FROM metadata_governance.gold.column_governance_detail\r\n",
-        "WHERE table_id = :table_id"
+        "WHERE logical_table_key = :logical_table_key;"
       ],
       "parameters": [
         {
-          "displayName": "table_id",
-          "keyword": "table_id",
+          "displayName": "logical_table_key",
+          "keyword": "logical_table_key",
           "dataType": "STRING",
           "defaultSelection": {
             "values": {
               "dataType": "STRING",
               "values": [
                 {
-                  "value": "50c7b5a4-820a-4dfd-be49-412026bfd583"
+                  "value": "Snowflake.crm.gold.sales"
                 }
               ]
             }
@@ -378,8 +381,8 @@
                   "datasetName": "3aef6650",
                   "fields": [
                     {
-                      "name": "sum(total_uncertified_columns)",
-                      "expression": "SUM(`total_uncertified_columns`)"
+                      "name": "sum(pct_certified)",
+                      "expression": "SUM(`pct_certified`)"
                     }
                   ],
                   "disaggregated": false
@@ -390,12 +393,12 @@
               "version": 2,
               "frame": {
                 "showTitle": true,
-                "title": "On Standard %"
+                "title": "Certified %"
               },
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "sum(total_uncertified_columns)"
+                  "fieldName": "sum(pct_certified)"
                 }
               },
               "data": {
@@ -690,6 +693,10 @@
                     {
                       "name": "uncertified_count",
                       "expression": "`uncertified_count`"
+                    },
+                    {
+                      "name": "logical_table_key",
+                      "expression": "`logical_table_key`"
                     }
                   ],
                   "disaggregated": true
@@ -716,6 +723,9 @@
                   },
                   {
                     "fieldName": "uncertified_count"
+                  },
+                  {
+                    "fieldName": "logical_table_key"
                   }
                 ]
               },
@@ -805,19 +815,19 @@
         },
         {
           "widget": {
-            "name": "28449092",
+            "name": "select-table",
             "queries": [
               {
-                "name": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca755b1514803abcb50acc89e2_table_id",
+                "name": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca755b1514803abcb50acc89e2_logical_table_key",
                 "query": {
                   "datasetName": "71b9ecb2",
                   "fields": [
                     {
-                      "name": "table_id",
-                      "expression": "`table_id`"
+                      "name": "logical_table_key",
+                      "expression": "`logical_table_key`"
                     },
                     {
-                      "name": "table_id_associativity",
+                      "name": "logical_table_key_associativity",
                       "expression": "COUNT_IF(`associative_filter_predicate_group`)"
                     }
                   ],
@@ -825,16 +835,16 @@
                 }
               },
               {
-                "name": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca854b1fa59e5016161e4b7f15_table_id",
+                "name": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca854b1fa59e5016161e4b7f15_logical_table_key",
                 "query": {
                   "datasetName": "b7e1e9ba",
                   "fields": [
                     {
-                      "name": "table_id",
-                      "expression": "`table_id`"
+                      "name": "logical_table_key",
+                      "expression": "`logical_table_key`"
                     },
                     {
-                      "name": "table_id_associativity",
+                      "name": "logical_table_key_associativity",
                       "expression": "COUNT_IF(`associative_filter_predicate_group`)"
                     }
                   ],
@@ -842,13 +852,13 @@
                 }
               },
               {
-                "name": "parameter_dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca987e102ba24db2d108f09ac8_table_id",
+                "name": "parameter_dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca987e102ba24db2d108f09ac8_logical_table_key",
                 "query": {
                   "datasetName": "8cb2e921",
                   "parameters": [
                     {
-                      "name": "table_id",
-                      "keyword": "table_id"
+                      "name": "logical_table_key",
+                      "keyword": "logical_table_key"
                     }
                   ],
                   "disaggregated": false
@@ -858,22 +868,24 @@
             "spec": {
               "version": 2,
               "frame": {
-                "showTitle": true
+                "showTitle": true,
+                "showDescription": false,
+                "title": "      Select Table"
               },
               "widgetType": "filter-single-select",
               "encodings": {
                 "fields": [
                   {
-                    "fieldName": "table_id",
-                    "queryName": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca755b1514803abcb50acc89e2_table_id"
+                    "fieldName": "logical_table_key",
+                    "queryName": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca755b1514803abcb50acc89e2_logical_table_key"
                   },
                   {
-                    "fieldName": "table_id",
-                    "queryName": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca854b1fa59e5016161e4b7f15_table_id"
+                    "parameterName": "logical_table_key",
+                    "queryName": "parameter_dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca987e102ba24db2d108f09ac8_logical_table_key"
                   },
                   {
-                    "parameterName": "table_id",
-                    "queryName": "parameter_dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca987e102ba24db2d108f09ac8_table_id"
+                    "fieldName": "logical_table_key",
+                    "queryName": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca854b1fa59e5016161e4b7f15_logical_table_key"
                   }
                 ]
               }
