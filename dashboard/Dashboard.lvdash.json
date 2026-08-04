@@ -264,6 +264,133 @@
           }
         }
       ]
+    },
+    {
+      "name": "7fd58c4e",
+      "displayName": "flagged_drilldown",
+      "queryLines": [
+        "SELECT logical_table_key, table_name, flag_type\r\n",
+        "FROM (\r\n",
+        "  SELECT logical_table_key, table_name, 'Low Maturity' AS flag_type\r\n",
+        "  FROM metadata_governance.gold.table_governance_summary_logical\r\n",
+        "  WHERE maturity_tier = 'Low'\r\n",
+        "\r\n",
+        "  UNION ALL\r\n",
+        "\r\n",
+        "  SELECT logical_table_key, table_name, 'PII Non-Compliant' AS flag_type\r\n",
+        "  FROM metadata_governance.gold.table_governance_summary_logical\r\n",
+        "  WHERE pii_non_compliant_count > 0\r\n",
+        "\r\n",
+        "  UNION ALL\r\n",
+        "\r\n",
+        "  SELECT logical_table_key, table_name, 'Unowned' AS flag_type\r\n",
+        "  FROM metadata_governance.gold.table_governance_summary_logical\r\n",
+        "  WHERE unowned_count > 0\r\n",
+        "\r\n",
+        "  UNION ALL\r\n",
+        "\r\n",
+        "  SELECT logical_table_key, table_name, 'Uncertified' AS flag_type\r\n",
+        "  FROM metadata_governance.gold.table_governance_summary_logical\r\n",
+        "  WHERE uncertified_count > 0\r\n",
+        ")\r\n",
+        "WHERE flag_type = :flag_type"
+      ],
+      "parameters": [
+        {
+          "displayName": "flag_type",
+          "keyword": "flag_type",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Low Maturity"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "64fd54d2",
+      "displayName": "Flagged Tables by Type",
+      "queryLines": [
+        "SELECT\n",
+        "  logical_table_key,\n",
+        "  table_name,\n",
+        "  flag_type\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      logical_table_key,\n",
+        "      table_name,\n",
+        "      'Low Maturity' AS flag_type\n",
+        "    FROM\n",
+        "      metadata_governance.gold.table_governance_summary_logical\n",
+        "    WHERE\n",
+        "      maturity_tier = 'Low'\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      logical_table_key,\n",
+        "      table_name,\n",
+        "      'PII Non-Compliant' AS flag_type\n",
+        "    FROM\n",
+        "      metadata_governance.gold.table_governance_summary_logical\n",
+        "    WHERE\n",
+        "      pii_non_compliant_count > 0\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      logical_table_key,\n",
+        "      table_name,\n",
+        "      'Unowned' AS flag_type\n",
+        "    FROM\n",
+        "      metadata_governance.gold.table_governance_summary_logical\n",
+        "    WHERE\n",
+        "      unowned_count > 0\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      logical_table_key,\n",
+        "      table_name,\n",
+        "      'Uncertified' AS flag_type\n",
+        "    FROM\n",
+        "      metadata_governance.gold.table_governance_summary_logical\n",
+        "    WHERE\n",
+        "      uncertified_count > 0\n",
+        "  )\n",
+        "WHERE\n",
+        "  (\n",
+        "    :flag_type IS NULL\n",
+        "    OR flag_type = :flag_type\n",
+        "  )"
+      ],
+      "parameters": [
+        {
+          "displayName": "Flag Type",
+          "keyword": "flag_type",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Low Maturity"
+                },
+                {
+                  "value": "PII Non-Compliant"
+                },
+                {
+                  "value": "Unowned"
+                },
+                {
+                  "value": "Uncertified"
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   ],
   "pages": [
@@ -276,7 +403,7 @@
             "name": "502536a0",
             "multilineTextboxSpec": {
               "lines": [
-                "# Metadata Governance - Executive Overview"
+                "# Metadata Governance Dashboard"
               ]
             }
           },
@@ -284,7 +411,7 @@
             "x": 0,
             "y": 0,
             "width": 12,
-            "height": 2
+            "height": 1
           }
         },
         {
@@ -309,7 +436,7 @@
               "version": 2,
               "frame": {
                 "showTitle": true,
-                "title": "Columns"
+                "title": "Total Columns"
               },
               "widgetType": "counter",
               "encodings": {
@@ -323,10 +450,10 @@
             }
           },
           "position": {
-            "x": 2,
-            "y": 3,
-            "width": 2,
-            "height": 2
+            "x": 6,
+            "y": 2,
+            "width": 6,
+            "height": 1
           }
         },
         {
@@ -365,10 +492,10 @@
             }
           },
           "position": {
-            "x": 4,
+            "x": 0,
             "y": 3,
-            "width": 2,
-            "height": 2
+            "width": 3,
+            "height": 3
           }
         },
         {
@@ -407,10 +534,10 @@
             }
           },
           "position": {
-            "x": 6,
-            "y": 3,
-            "width": 2,
-            "height": 2
+            "x": 3,
+            "y": 6,
+            "width": 3,
+            "height": 3
           }
         },
         {
@@ -449,10 +576,10 @@
             }
           },
           "position": {
-            "x": 8,
-            "y": 3,
-            "width": 2,
-            "height": 2
+            "x": 0,
+            "y": 6,
+            "width": 3,
+            "height": 3
           }
         },
         {
@@ -477,7 +604,7 @@
               "version": 2,
               "frame": {
                 "showTitle": true,
-                "title": "Unlabeled Risk"
+                "title": "Unlabeled Risk Count"
               },
               "widgetType": "counter",
               "encodings": {
@@ -491,10 +618,10 @@
             }
           },
           "position": {
-            "x": 10,
+            "x": 3,
             "y": 3,
-            "width": 2,
-            "height": 2
+            "width": 3,
+            "height": 3
           }
         },
         {
@@ -534,9 +661,9 @@
           },
           "position": {
             "x": 0,
-            "y": 3,
-            "width": 2,
-            "height": 2
+            "y": 2,
+            "width": 6,
+            "height": 1
           }
         },
         {
@@ -578,7 +705,23 @@
                 "color": {
                   "fieldName": "maturity_tier",
                   "scale": {
-                    "type": "categorical"
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "High",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      },
+                      {
+                        "value": "Low",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      }
+                    ]
                   }
                 },
                 "label": {
@@ -591,8 +734,8 @@
             }
           },
           "position": {
-            "x": 0,
-            "y": 5,
+            "x": 6,
+            "y": 3,
             "width": 6,
             "height": 6
           }
@@ -606,18 +749,6 @@
                 "query": {
                   "datasetName": "71b9ecb2",
                   "fields": [
-                    {
-                      "name": "table_name",
-                      "expression": "`table_name`"
-                    },
-                    {
-                      "name": "schema_name",
-                      "expression": "`schema_name`"
-                    },
-                    {
-                      "name": "database_name",
-                      "expression": "`database_name`"
-                    },
                     {
                       "name": "table_completeness_pct",
                       "expression": "`table_completeness_pct`"
@@ -634,21 +765,12 @@
             "spec": {
               "version": 2,
               "frame": {
-                "title": "Table Completeness Details",
+                "title": "Table Completeness",
                 "showTitle": true
               },
               "widgetType": "table",
               "encodings": {
                 "columns": [
-                  {
-                    "fieldName": "table_name"
-                  },
-                  {
-                    "fieldName": "schema_name"
-                  },
-                  {
-                    "fieldName": "database_name"
-                  },
                   {
                     "fieldName": "table_completeness_pct"
                   },
@@ -663,10 +785,10 @@
             }
           },
           "position": {
-            "x": 6,
-            "y": 5,
-            "width": 6,
-            "height": 6
+            "x": 0,
+            "y": 18,
+            "width": 4,
+            "height": 2
           }
         },
         {
@@ -679,10 +801,6 @@
                   "datasetName": "b7e1e9ba",
                   "fields": [
                     {
-                      "name": "table_name",
-                      "expression": "`table_name`"
-                    },
-                    {
                       "name": "pii_non_compliant_count",
                       "expression": "`pii_non_compliant_count`"
                     },
@@ -693,10 +811,6 @@
                     {
                       "name": "uncertified_count",
                       "expression": "`uncertified_count`"
-                    },
-                    {
-                      "name": "logical_table_key",
-                      "expression": "`logical_table_key`"
                     }
                   ],
                   "disaggregated": true
@@ -706,15 +820,12 @@
             "spec": {
               "version": 2,
               "frame": {
-                "title": "Compliance and Risk",
+                "title": "Table Compliance and Risk",
                 "showTitle": true
               },
               "widgetType": "table",
               "encodings": {
                 "columns": [
-                  {
-                    "fieldName": "table_name"
-                  },
                   {
                     "fieldName": "pii_non_compliant_count"
                   },
@@ -723,9 +834,6 @@
                   },
                   {
                     "fieldName": "uncertified_count"
-                  },
-                  {
-                    "fieldName": "logical_table_key"
                   }
                 ]
               },
@@ -735,10 +843,10 @@
             }
           },
           "position": {
-            "x": 0,
-            "y": 11,
-            "width": 12,
-            "height": 6
+            "x": 4,
+            "y": 18,
+            "width": 8,
+            "height": 2
           }
         },
         {
@@ -808,9 +916,9 @@
           },
           "position": {
             "x": 0,
-            "y": 17,
+            "y": 20,
             "width": 12,
-            "height": 6
+            "height": 5
           }
         },
         {
@@ -893,9 +1001,164 @@
           },
           "position": {
             "x": 0,
-            "y": 2,
+            "y": 17,
             "width": 12,
             "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "c6d9b41a",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"color: #077A9D;font-size: 18px;\">Overall Data View</span>"
+              ],
+              "verticalAlign": "VERTICAL_ALIGN_CENTER"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "1bae8526",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"font-size: 18px;color: #077A9D;\">Granular Data View</span>"
+              ],
+              "verticalAlign": "VERTICAL_ALIGN_CENTER"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "select-flag-type",
+            "queries": [
+              {
+                "name": "dashboards/01f1901ad8cd105e98c764e4dbd38638/datasets/01f19025791714b9aa177dbe1f88bff2_flag_type",
+                "query": {
+                  "datasetName": "64fd54d2",
+                  "fields": [
+                    {
+                      "name": "flag_type",
+                      "expression": "`flag_type`"
+                    },
+                    {
+                      "name": "flag_type_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f1901ad8cd105e98c764e4dbd38638/datasets/01f19025791714b9aa177dbe1f88bff2_flag_type",
+                "query": {
+                  "datasetName": "64fd54d2",
+                  "parameters": [
+                    {
+                      "name": "flag_type",
+                      "keyword": "flag_type"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Select Flag Type"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "flag_type",
+                    "queryName": "dashboards/01f1901ad8cd105e98c764e4dbd38638/datasets/01f19025791714b9aa177dbe1f88bff2_flag_type"
+                  },
+                  {
+                    "parameterName": "flag_type",
+                    "queryName": "parameter_dashboards/01f1901ad8cd105e98c764e4dbd38638/datasets/01f19025791714b9aa177dbe1f88bff2_flag_type"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "flagged-tables-result",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "64fd54d2",
+                  "fields": [
+                    {
+                      "name": "logical_table_key",
+                      "expression": "`logical_table_key`"
+                    },
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "flag_type",
+                      "expression": "`flag_type`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Flagged Tables",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "logical_table_key"
+                  },
+                  {
+                    "fieldName": "table_name"
+                  },
+                  {
+                    "fieldName": "flag_type"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 6
           }
         }
       ],
