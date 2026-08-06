@@ -25,7 +25,7 @@ TIER2_FIELDS = [
 ]
 
 # Maturity thresholds, applied to table-level completeness percentage.
-MATURITY_HIGH_MIN = 90
+MATURITY_HIGH_MIN = 95
 MATURITY_MEDIUM_MIN = 50
 
 # Certification level used when the source value is null.
