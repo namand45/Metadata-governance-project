@@ -1,251 +1,148 @@
 {
   "datasets": [
     {
-      "name": "bee7a162",
-      "displayName": "kpi_headline",
-      "queryLines": [
-        "WITH std AS (\r\n",
-        "  SELECT total_columns AS standard_column_count\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary\r\n",
-        "  GROUP BY total_columns\r\n",
-        "  ORDER BY COUNT(*) DESC, total_columns DESC\r\n",
-        "  LIMIT 1\r\n",
-        "),\r\n",
-        "tbl AS (\r\n",
-        "  SELECT\r\n",
-        "    COUNT(*)                                  AS total_tables,\r\n",
-        "    SUM(s.total_columns)                      AS total_columns,\r\n",
-        "    ROUND(AVG(s.table_completeness_pct), 1)   AS avg_table_completeness_pct,\r\n",
-        "    SUM(s.pii_non_compliant_count)            AS total_pii_noncompliant,\r\n",
-        "    COUNT(DISTINCT s.system_name)             AS total_source_systems,\r\n",
-        "    MAX(st.standard_column_count)             AS standard_column_count,\r\n",
-        "    ROUND(100.0 * SUM(CASE WHEN s.total_columns = st.standard_column_count THEN 1 ELSE 0 END)\r\n",
-        "          / COUNT(*), 1)                      AS pct_structurally_compliant\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary s\r\n",
-        "  CROSS JOIN std st\r\n",
-        "),\r\n",
-        "colm AS (\r\n",
-        "  SELECT\r\n",
-        "    ROUND(100.0 * SUM(CASE WHEN unowned     THEN 0 ELSE 1 END) / COUNT(*), 1) AS pct_stewardship_coverage,\r\n",
-        "    ROUND(100.0 * SUM(CASE WHEN uncertified THEN 0 ELSE 1 END) / COUNT(*), 1) AS pct_certified_any_level\r\n",
-        "  FROM metadata_governance.gold.column_governance_detail\r\n",
-        ")\r\n",
-        "SELECT tbl.*, colm.*\r\n",
-        "FROM tbl CROSS JOIN colm;"
-      ]
-    },
-    {
-      "name": "e6500882",
-      "displayName": "maturity_mix",
-      "queryLines": [
-        "SELECT\r\n",
-        "  maturity_tier,\r\n",
-        "  COUNT(*)                                           AS table_count,\r\n",
-        "  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct_of_tables,\r\n",
-        "  ROUND(AVG(table_completeness_pct), 2)              AS avg_completeness_pct,\r\n",
-        "  CASE maturity_tier WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END AS tier_order\r\n",
-        "FROM metadata_governance.gold.table_governance_summary\r\n",
-        "GROUP BY maturity_tier\r\n",
-        "ORDER BY tier_order;"
-      ]
-    },
-    {
       "name": "860fcda0",
-      "displayName": "structural_compliance",
+      "displayName": "tables_table",
       "queryLines": [
-        "WITH std AS (\r\n",
-        "  SELECT total_columns AS standard_column_count\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary\r\n",
-        "  GROUP BY total_columns\r\n",
-        "  ORDER BY COUNT(*) DESC, total_columns DESC\r\n",
-        "  LIMIT 1\r\n",
-        "),\r\n",
-        "flagged AS (\r\n",
+        "WITH ranked AS (\r\n",
         "  SELECT\r\n",
-        "    CASE WHEN s.total_columns = st.standard_column_count\r\n",
-        "         THEN 'Meets column standard'\r\n",
-        "         ELSE 'Does not meet standard' END AS structural_status\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary s\r\n",
-        "  CROSS JOIN std st\r\n",
+        "    logical_table_key,\r\n",
+        "    total_columns,\r\n",
+        "    table_completeness_pct,\r\n",
+        "    is_structurally_compliant,\r\n",
+        "    maturity_tier,\r\n",
+        "    ROUND(100.0 * (total_columns - unowned_count) / NULLIF(total_columns, 0), 1) AS pct_owned,\r\n",
+        "    ROUND(100.0 * (total_columns - uncertified_count) / NULLIF(total_columns, 0), 1) AS pct_certified,\r\n",
+        "    ROUND(100.0 * (total_columns - pii_non_compliant_count) / NULLIF(total_columns, 0), 1) AS pct_pii_compliant,\r\n",
+        "    RANK() OVER (ORDER BY table_completeness_pct DESC) AS rank_completeness,\r\n",
+        "    RANK() OVER (ORDER BY is_structurally_compliant DESC) AS rank_structural,\r\n",
+        "    RANK() OVER (ORDER BY pii_non_compliant_count ASC) AS rank_pii,\r\n",
+        "    RANK() OVER (ORDER BY unowned_count ASC) AS rank_unowned,\r\n",
+        "    RANK() OVER (ORDER BY uncertified_count ASC) AS rank_uncertified\r\n",
+        "  FROM metadata_governance.gold.table_governance_summary\r\n",
         ")\r\n",
         "SELECT\r\n",
-        "  structural_status,\r\n",
-        "  COUNT(*)                                           AS table_count,\r\n",
-        "  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct_of_tables\r\n",
-        "FROM flagged\r\n",
-        "GROUP BY structural_status\r\n",
-        "ORDER BY table_count DESC;"
+        "  logical_table_key,\r\n",
+        "  total_columns,\r\n",
+        "  ROUND((rank_completeness + rank_structural + rank_pii + rank_unowned + rank_uncertified) / 5.0, 1) AS avg_governance_rank,\r\n",
+        "  table_completeness_pct,\r\n",
+        "  pct_owned,\r\n",
+        "  pct_certified,\r\n",
+        "  pct_pii_compliant,\r\n",
+        "  is_structurally_compliant,\r\n",
+        "  maturity_tier\r\n",
+        "FROM ranked\r\n",
+        "ORDER BY avg_governance_rank DESC"
       ]
     },
     {
       "name": "31139d0a",
-      "displayName": "columns_per_table",
+      "displayName": "table_list",
       "queryLines": [
-        "SELECT\r\n",
-        "  total_columns AS columns_in_table,\r\n",
-        "  COUNT(*)      AS number_of_tables\r\n",
+        "SELECT DISTINCT logical_table_key, table_name\r\n",
         "FROM metadata_governance.gold.table_governance_summary\r\n",
-        "GROUP BY total_columns\r\n",
-        "ORDER BY columns_in_table;"
+        "ORDER BY table_name"
       ]
     },
     {
       "name": "10bb0761",
-      "displayName": "governance_gaps",
+      "displayName": "database_table",
       "queryLines": [
-        "SELECT * FROM (\r\n",
-        "  SELECT 'Data steward (owner)' AS governance_field,\r\n",
-        "         ROUND(100.0 * SUM(CASE WHEN unowned THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_missing\r\n",
-        "  FROM metadata_governance.gold.column_governance_detail\r\n",
-        "  UNION ALL\r\n",
-        "  SELECT 'Certification level',\r\n",
-        "         ROUND(100.0 * SUM(CASE WHEN uncertified THEN 1 ELSE 0 END) / COUNT(*), 1)\r\n",
-        "  FROM metadata_governance.gold.column_governance_detail\r\n",
-        ") AS gaps\r\n",
-        "ORDER BY pct_missing DESC;"
-      ]
-    },
-    {
-      "name": "efb8768c",
-      "displayName": "certification_mix",
-      "queryLines": [
+        "WITH db_level AS (\r\n",
+        "  SELECT\r\n",
+        "    database_name,\r\n",
+        "    SUM(total_tables) AS total_tables,\r\n",
+        "    SUM(total_columns) AS total_columns,\r\n",
+        "    ROUND(AVG(avg_completeness_pct), 1) AS avg_completeness_pct,\r\n",
+        "    ROUND(AVG(pct_structurally_compliant), 1) AS pct_structurally_compliant,\r\n",
+        "    SUM(total_unowned_columns) AS total_unowned_columns,\r\n",
+        "    SUM(total_uncertified_columns) AS total_uncertified_columns,\r\n",
+        "    SUM(total_pii_noncompliant) AS total_pii_noncompliant\r\n",
+        "  FROM metadata_governance.gold.database_governance_summary\r\n",
+        "  GROUP BY database_name\r\n",
+        "),\r\n",
+        "ranked AS (\r\n",
+        "  SELECT\r\n",
+        "    database_name,\r\n",
+        "    total_tables,\r\n",
+        "    total_columns,\r\n",
+        "    avg_completeness_pct,\r\n",
+        "    pct_structurally_compliant,\r\n",
+        "    ROUND(100.0 * (total_columns - total_unowned_columns) / NULLIF(total_columns, 0), 1) AS pct_owned,\r\n",
+        "    ROUND(100.0 * (total_columns - total_uncertified_columns) / NULLIF(total_columns, 0), 1) AS pct_certified,\r\n",
+        "    ROUND(100.0 * (total_columns - total_pii_noncompliant) / NULLIF(total_columns, 0), 1) AS pct_pii_compliant,\r\n",
+        "    RANK() OVER (ORDER BY avg_completeness_pct DESC) AS rank_completeness,\r\n",
+        "    RANK() OVER (ORDER BY pct_structurally_compliant DESC) AS rank_structural,\r\n",
+        "    RANK() OVER (ORDER BY total_pii_noncompliant ASC) AS rank_pii,\r\n",
+        "    RANK() OVER (ORDER BY total_unowned_columns ASC) AS rank_unowned,\r\n",
+        "    RANK() OVER (ORDER BY total_uncertified_columns ASC) AS rank_uncertified\r\n",
+        "  FROM db_level\r\n",
+        ")\r\n",
         "SELECT\r\n",
-        "  CASE WHEN uncertified THEN 'Uncertified' ELSE 'Certified (any level)' END AS certification_status,\r\n",
-        "  COUNT(*)                                           AS column_record_count,\r\n",
-        "  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct_of_records\r\n",
-        "FROM metadata_governance.gold.column_governance_detail\r\n",
-        "GROUP BY uncertified\r\n",
-        "ORDER BY column_record_count DESC;"
-      ]
-    },
-    {
-      "name": "1f1e2d38",
-      "displayName": "completeness_by_system",
-      "queryLines": [
-        "SELECT\r\n",
-        "  system_name,\r\n",
-        "  COUNT(*)                              AS table_count,\r\n",
-        "  ROUND(AVG(table_completeness_pct), 1) AS avg_completeness_pct,\r\n",
-        "  SUM(pii_non_compliant_count)          AS pii_risk_count\r\n",
-        "FROM metadata_governance.gold.table_governance_summary\r\n",
-        "GROUP BY system_name\r\n",
-        "ORDER BY avg_completeness_pct ASC;"
+        "  database_name,\r\n",
+        "  total_columns,\r\n",
+        "  ROUND((rank_completeness + rank_structural + rank_pii + rank_unowned + rank_uncertified) / 5.0, 1) AS avg_governance_rank,\r\n",
+        "  avg_completeness_pct,\r\n",
+        "  pct_owned,\r\n",
+        "  pct_certified,\r\n",
+        "  pct_pii_compliant,\r\n",
+        "  pct_structurally_compliant\r\n",
+        "FROM ranked\r\n",
+        "ORDER BY avg_governance_rank DESC"
       ]
     },
     {
       "name": "adc67b9d",
-      "displayName": "attention_list",
+      "displayName": "database_list",
       "queryLines": [
-        "WITH std AS (\r\n",
-        "  SELECT total_columns AS standard_column_count\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary\r\n",
-        "  GROUP BY total_columns\r\n",
-        "  ORDER BY COUNT(*) DESC, total_columns DESC\r\n",
-        "  LIMIT 1\r\n",
-        ")\r\n",
-        "SELECT\r\n",
-        "  s.table_name              AS `Table`,\r\n",
-        "  s.system_name             AS `Source system`,\r\n",
-        "  s.total_columns           AS `Columns`,\r\n",
-        "  s.table_completeness_pct  AS `Completeness %`,\r\n",
-        "  s.maturity_tier           AS `Maturity`,\r\n",
-        "  s.pii_non_compliant_count AS `Sensitive data, no label`,\r\n",
-        "  s.unowned_count           AS `Columns with no owner`,\r\n",
-        "  s.uncertified_count       AS `Uncertified columns`,\r\n",
-        "  CASE WHEN s.total_columns = st.standard_column_count THEN 'Yes' ELSE 'No' END AS `Meets column standard`\r\n",
-        "FROM metadata_governance.gold.table_governance_summary s\r\n",
-        "CROSS JOIN std st\r\n",
-        "ORDER BY s.table_completeness_pct ASC, s.pii_non_compliant_count DESC\r\n",
-        "LIMIT 50;"
-      ]
-    },
-    {
-      "name": "56d89ce0",
-      "displayName": "exceptions_by_type",
-      "queryLines": [
-        "SELECT * FROM (\r\n",
-        "  SELECT 'Sensitive data with no security label' AS exception_type,\r\n",
-        "         'High' AS severity,\r\n",
-        "         SUM(CASE WHEN pii_non_compliant THEN 1 ELSE 0 END) AS issue_count\r\n",
-        "  FROM metadata_governance.gold.column_governance_detail\r\n",
-        "  UNION ALL\r\n",
-        "  SELECT 'No data steward assigned', 'Medium',\r\n",
-        "         SUM(CASE WHEN unowned THEN 1 ELSE 0 END)\r\n",
-        "  FROM metadata_governance.gold.column_governance_detail\r\n",
-        "  UNION ALL\r\n",
-        "  SELECT 'Not certified', 'Low',\r\n",
-        "         SUM(CASE WHEN uncertified THEN 1 ELSE 0 END)\r\n",
-        "  FROM metadata_governance.gold.column_governance_detail\r\n",
-        ") AS ex\r\n",
-        "WHERE issue_count > 0\r\n",
-        "ORDER BY issue_count DESC;"
+        "SELECT DISTINCT database_name\r\n",
+        "FROM metadata_governance.gold.database_governance_summary\r\n",
+        "ORDER BY database_name"
       ]
     },
     {
       "name": "3aef6650",
-      "displayName": "Exec_summary",
+      "displayName": "exec_summary",
       "queryLines": [
         "SELECT\r\n",
-        "  COUNT(*) AS total_tables,\r\n",
-        "  SUM(total_columns) AS total_columns,\r\n",
-        "  ROUND(AVG(table_completeness_pct), 1) AS avg_table_completeness_pct,\r\n",
-        "  SUM(pii_non_compliant_count) AS total_pii_noncompliant,\r\n",
-        "  SUM(unowned_count) AS total_unowned_columns,\r\n",
-        "  SUM(uncertified_count) AS total_uncertified_columns,\r\n",
-        "  COUNT(DISTINCT system_name) AS total_source_systems,\r\n",
+        "  COUNT(*)                                  AS total_tables,\r\n",
+        "  SUM(total_columns)                        AS total_columns,\r\n",
+        "  (SELECT COUNT(DISTINCT database_name) FROM metadata_governance.gold.database_governance_summary) AS total_databases,\r\n",
+        "  ROUND(AVG(table_completeness_pct), 1)     AS avg_table_completeness_pct,\r\n",
+        "  ROUND(100.0 * SUM(CASE WHEN is_structurally_compliant THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_structurally_compliant,\r\n",
         "  ROUND(100.0 * (SUM(total_columns) - SUM(unowned_count)) / NULLIF(SUM(total_columns), 0), 1) AS pct_owned,\r\n",
-        "  ROUND(100.0 * (SUM(total_columns) - SUM(uncertified_count)) / NULLIF(SUM(total_columns), 0), 1) AS pct_certified\r\n",
-        "FROM metadata_governance.gold.table_governance_summary_logical;"
+        "  ROUND(100.0 * (SUM(total_columns) - SUM(uncertified_count)) / NULLIF(SUM(total_columns), 0), 1) AS pct_certified,\r\n",
+        "  ROUND(100.0 * (SUM(total_columns) - SUM(pii_non_compliant_count)) / NULLIF(SUM(total_columns), 0), 1) AS pct_pii_compliant\r\n",
+        "FROM metadata_governance.gold.table_governance_summary"
       ]
     },
     {
       "name": "ed4ca08e",
       "displayName": "maturity_distribution",
       "queryLines": [
-        "SELECT maturity_tier, COUNT(*) AS table_count\r\n",
-        "FROM metadata_governance.gold.table_governance_summary_logical\r\n",
-        "GROUP BY maturity_tier;"
-      ]
-    },
-    {
-      "name": "71b9ecb2",
-      "displayName": "completeness_by_table",
-      "queryLines": [
-        "SELECT\r\n",
-        "  logical_table_key,\r\n",
-        "  table_name,\r\n",
-        "  schema_name,\r\n",
-        "  database_name,\r\n",
-        "  system_name,\r\n",
-        "  total_columns,\r\n",
-        "  table_completeness_pct,\r\n",
-        "  maturity_tier\r\n",
-        "FROM metadata_governance.gold.table_governance_summary_logical\r\n",
-        "ORDER BY table_completeness_pct ASC;"
-      ]
-    },
-    {
-      "name": "b7e1e9ba",
-      "displayName": "compliance_risk",
-      "queryLines": [
-        "SELECT\r\n",
-        "  logical_table_key,\r\n",
-        "  table_name,\r\n",
-        "  pii_non_compliant_count,\r\n",
-        "  unowned_count,\r\n",
-        "  uncertified_count\r\n",
-        "FROM metadata_governance.gold.table_governance_summary_logical\r\n",
-        "WHERE pii_non_compliant_count > 0 OR unowned_count > 0\r\n",
-        "ORDER BY pii_non_compliant_count DESC;"
+        "SELECT maturity_tier, COUNT(*) as table_count\r\n",
+        "FROM metadata_governance.gold.table_governance_summary\r\n",
+        "GROUP BY maturity_tier"
       ]
     },
     {
       "name": "8cb2e921",
       "displayName": "column_drilldown",
       "queryLines": [
-        "SELECT column_name, row_completeness_pct, pii_non_compliant, unowned, uncertified\r\n",
+        "SELECT \r\n",
+        "  logical_table_key,\r\n",
+        "  column_id,\r\n",
+        "  column_name, \r\n",
+        "  row_completeness_pct, \r\n",
+        "  security_classification,\r\n",
+        "  data_steward,\r\n",
+        "  certification_level,\r\n",
+        "  pii_non_compliant, \r\n",
+        "  unowned, \r\n",
+        "  uncertified\r\n",
         "FROM metadata_governance.gold.column_governance_detail\r\n",
-        "WHERE logical_table_key = :logical_table_key;"
+        "WHERE logical_table_key = :logical_table_key\r\n",
+        "ORDER BY row_completeness_pct ASC"
       ],
       "parameters": [
         {
@@ -257,7 +154,7 @@
               "dataType": "STRING",
               "values": [
                 {
-                  "value": "Snowflake.crm.gold.sales"
+                  "value": "Snowflake.crm.gold.support_tickets"
                 }
               ]
             }
@@ -267,103 +164,53 @@
     },
     {
       "name": "7fd58c4e",
-      "displayName": "flagged_drilldown",
+      "displayName": "flags_list",
       "queryLines": [
-        "SELECT logical_table_key, table_name, flag_type\r\n",
+        "SELECT DISTINCT flag_type\r\n",
         "FROM (\r\n",
-        "  SELECT logical_table_key, table_name, 'Low Maturity' AS flag_type\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary_logical\r\n",
-        "  WHERE maturity_tier = 'Low'\r\n",
-        "\r\n",
-        "  UNION ALL\r\n",
-        "\r\n",
-        "  SELECT logical_table_key, table_name, 'PII Non-Compliant' AS flag_type\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary_logical\r\n",
-        "  WHERE pii_non_compliant_count > 0\r\n",
-        "\r\n",
-        "  UNION ALL\r\n",
-        "\r\n",
-        "  SELECT logical_table_key, table_name, 'Unowned' AS flag_type\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary_logical\r\n",
-        "  WHERE unowned_count > 0\r\n",
-        "\r\n",
-        "  UNION ALL\r\n",
-        "\r\n",
-        "  SELECT logical_table_key, table_name, 'Uncertified' AS flag_type\r\n",
-        "  FROM metadata_governance.gold.table_governance_summary_logical\r\n",
-        "  WHERE uncertified_count > 0\r\n",
-        ")\r\n",
-        "WHERE flag_type = :flag_type"
-      ],
-      "parameters": [
-        {
-          "displayName": "flag_type",
-          "keyword": "flag_type",
-          "dataType": "STRING",
-          "defaultSelection": {
-            "values": {
-              "dataType": "STRING",
-              "values": [
-                {
-                  "value": "Low Maturity"
-                }
-              ]
-            }
-          }
-        }
+        "  SELECT 'Low Maturity' AS flag_type\r\n",
+        "  UNION ALL SELECT 'Structurally Non-Compliant'\r\n",
+        "  UNION ALL SELECT 'PII Non-Compliant'\r\n",
+        "  UNION ALL SELECT 'Unowned'\r\n",
+        "  UNION ALL SELECT 'Uncertified'\r\n",
+        ")"
       ]
     },
     {
       "name": "64fd54d2",
-      "displayName": "Flagged Tables by Type",
+      "displayName": "tables_flagged",
       "queryLines": [
-        "SELECT\n",
-        "  logical_table_key,\n",
-        "  table_name,\n",
-        "  flag_type\n",
-        "FROM\n",
-        "  (\n",
-        "    SELECT\n",
-        "      logical_table_key,\n",
-        "      table_name,\n",
-        "      'Low Maturity' AS flag_type\n",
-        "    FROM\n",
-        "      metadata_governance.gold.table_governance_summary_logical\n",
-        "    WHERE\n",
-        "      maturity_tier = 'Low'\n",
-        "    UNION ALL\n",
-        "    SELECT\n",
-        "      logical_table_key,\n",
-        "      table_name,\n",
-        "      'PII Non-Compliant' AS flag_type\n",
-        "    FROM\n",
-        "      metadata_governance.gold.table_governance_summary_logical\n",
-        "    WHERE\n",
-        "      pii_non_compliant_count > 0\n",
-        "    UNION ALL\n",
-        "    SELECT\n",
-        "      logical_table_key,\n",
-        "      table_name,\n",
-        "      'Unowned' AS flag_type\n",
-        "    FROM\n",
-        "      metadata_governance.gold.table_governance_summary_logical\n",
-        "    WHERE\n",
-        "      unowned_count > 0\n",
-        "    UNION ALL\n",
-        "    SELECT\n",
-        "      logical_table_key,\n",
-        "      table_name,\n",
-        "      'Uncertified' AS flag_type\n",
-        "    FROM\n",
-        "      metadata_governance.gold.table_governance_summary_logical\n",
-        "    WHERE\n",
-        "      uncertified_count > 0\n",
-        "  )\n",
-        "WHERE\n",
-        "  (\n",
-        "    :flag_type IS NULL\n",
-        "    OR flag_type = :flag_type\n",
-        "  )"
+        "WITH flagged AS (\n",
+        "  SELECT logical_table_key, table_name, schema_name, database_name, 'Low Maturity' AS flag_type\n",
+        "  FROM metadata_governance.gold.table_governance_summary\n",
+        "  WHERE maturity_tier = 'Low'\n",
+        "\n",
+        "  UNION ALL\n",
+        "\n",
+        "  SELECT logical_table_key, table_name, schema_name, database_name, 'Structurally Non-Compliant' AS flag_type\n",
+        "  FROM metadata_governance.gold.table_governance_summary\n",
+        "  WHERE is_structurally_compliant = false\n",
+        "\n",
+        "  UNION ALL\n",
+        "\n",
+        "  SELECT logical_table_key, table_name, schema_name, database_name, 'PII Non-Compliant' AS flag_type\n",
+        "  FROM metadata_governance.gold.table_governance_summary\n",
+        "  WHERE pii_non_compliant_count > 0\n",
+        "\n",
+        "  UNION ALL\n",
+        "\n",
+        "  SELECT logical_table_key, table_name, schema_name, database_name, 'Unowned' AS flag_type\n",
+        "  FROM metadata_governance.gold.table_governance_summary\n",
+        "  WHERE unowned_count > 0\n",
+        "\n",
+        "  UNION ALL\n",
+        "\n",
+        "  SELECT logical_table_key, table_name, schema_name, database_name, 'Uncertified' AS flag_type\n",
+        "  FROM metadata_governance.gold.table_governance_summary\n",
+        "  WHERE uncertified_count > 0\n",
+        ")\n",
+        "SELECT * FROM flagged\n",
+        "WHERE flag_type = :flag_type"
       ],
       "parameters": [
         {
@@ -391,6 +238,223 @@
           }
         }
       ]
+    },
+    {
+      "name": "72bb4ea7",
+      "displayName": "database_drilldown",
+      "queryLines": [
+        "WITH selected AS (\n",
+        "  SELECT\n",
+        "    'Completeness %' AS metric_name,\n",
+        "    ROUND(AVG(avg_completeness_pct), 1) AS database_selected\n",
+        "  FROM\n",
+        "    metadata_governance.gold.database_governance_summary\n",
+        "  WHERE\n",
+        "    database_name = :selected_database\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Structural Compliance %',\n",
+        "    ROUND(AVG(pct_structurally_compliant), 1)\n",
+        "  FROM\n",
+        "    metadata_governance.gold.database_governance_summary\n",
+        "  WHERE\n",
+        "    database_name = :selected_database\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Owned %',\n",
+        "    ROUND(\n",
+        "      100.0 * (SUM(total_columns) - SUM(total_unowned_columns)) / NULLIF(SUM(total_columns), 0),\n",
+        "      1\n",
+        "    )\n",
+        "  FROM\n",
+        "    metadata_governance.gold.database_governance_summary\n",
+        "  WHERE\n",
+        "    database_name = :selected_database\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Certified %',\n",
+        "    ROUND(\n",
+        "      100.0 * (SUM(total_columns) - SUM(total_uncertified_columns)) / NULLIF(SUM(total_columns), 0),\n",
+        "      1\n",
+        "    )\n",
+        "  FROM\n",
+        "    metadata_governance.gold.database_governance_summary\n",
+        "  WHERE\n",
+        "    database_name = :selected_database\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'PII Compliant %',\n",
+        "    ROUND(\n",
+        "      100.0 * (SUM(total_columns) - SUM(total_pii_noncompliant)) / NULLIF(SUM(total_columns), 0),\n",
+        "      1\n",
+        "    )\n",
+        "  FROM\n",
+        "    metadata_governance.gold.database_governance_summary\n",
+        "  WHERE\n",
+        "    database_name = :selected_database\n",
+        "),\n",
+        "overall AS (\n",
+        "  SELECT\n",
+        "    'Completeness %' AS metric_name,\n",
+        "    ROUND(AVG(table_completeness_pct), 1) AS overall_avg\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Structural Compliance %',\n",
+        "    ROUND(\n",
+        "      100.0\n",
+        "        * SUM(\n",
+        "          CASE\n",
+        "            WHEN is_structurally_compliant THEN 1\n",
+        "            ELSE 0\n",
+        "          END\n",
+        "        )\n",
+        "        / COUNT(*),\n",
+        "      1\n",
+        "    )\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Owned %',\n",
+        "    ROUND(100.0 * (SUM(total_columns) - SUM(unowned_count)) / NULLIF(SUM(total_columns), 0), 1)\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Certified %',\n",
+        "    ROUND(100.0 * (SUM(total_columns) - SUM(uncertified_count)) / NULLIF(SUM(total_columns), 0), 1)\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'PII Compliant %',\n",
+        "    ROUND(\n",
+        "      100.0 * (SUM(total_columns) - SUM(pii_non_compliant_count)) / NULLIF(SUM(total_columns), 0),\n",
+        "      1\n",
+        "    )\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        ")\n",
+        "SELECT\n",
+        "  s.metric_name,\n",
+        "  s.database_selected,\n",
+        "  o.overall_avg\n",
+        "FROM\n",
+        "  selected s\n",
+        "    JOIN overall o\n",
+        "      ON s.metric_name = o.metric_name"
+      ],
+      "parameters": [
+        {
+          "displayName": "selected_database",
+          "keyword": "selected_database",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "erp"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "c3f49f09",
+      "displayName": "table_drilldown",
+      "queryLines": [
+        "WITH selected AS (\n",
+        "  SELECT\n",
+        "    'Completeness %' AS metric_name,\n",
+        "    table_completeness_pct AS table_selected\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  WHERE\n",
+        "    logical_table_key = :selected_table\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Owned %',\n",
+        "    ROUND(100.0 * (total_columns - unowned_count) / NULLIF(total_columns, 0), 1)\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  WHERE\n",
+        "    logical_table_key = :selected_table\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Certified %',\n",
+        "    ROUND(100.0 * (total_columns - uncertified_count) / NULLIF(total_columns, 0), 1)\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  WHERE\n",
+        "    logical_table_key = :selected_table\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'PII Compliant %',\n",
+        "    ROUND(100.0 * (total_columns - pii_non_compliant_count) / NULLIF(total_columns, 0), 1)\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  WHERE\n",
+        "    logical_table_key = :selected_table\n",
+        "),\n",
+        "overall AS (\n",
+        "  SELECT\n",
+        "    'Completeness %' AS metric_name,\n",
+        "    ROUND(AVG(table_completeness_pct), 1) AS overall_avg\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Owned %',\n",
+        "    ROUND(100.0 * (SUM(total_columns) - SUM(unowned_count)) / NULLIF(SUM(total_columns), 0), 1)\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'Certified %',\n",
+        "    ROUND(100.0 * (SUM(total_columns) - SUM(uncertified_count)) / NULLIF(SUM(total_columns), 0), 1)\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    'PII Compliant %',\n",
+        "    ROUND(\n",
+        "      100.0 * (SUM(total_columns) - SUM(pii_non_compliant_count)) / NULLIF(SUM(total_columns), 0),\n",
+        "      1\n",
+        "    )\n",
+        "  FROM\n",
+        "    metadata_governance.gold.table_governance_summary\n",
+        ")\n",
+        "SELECT\n",
+        "  s.metric_name,\n",
+        "  s.table_selected,\n",
+        "  o.overall_avg\n",
+        "FROM\n",
+        "  selected s\n",
+        "    JOIN overall o\n",
+        "      ON s.metric_name = o.metric_name"
+      ],
+      "parameters": [
+        {
+          "displayName": "selected_table",
+          "keyword": "selected_table",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Snowflake.crm.gold.support_tickets"
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   ],
   "pages": [
@@ -403,7 +467,7 @@
             "name": "502536a0",
             "multilineTextboxSpec": {
               "lines": [
-                "# Metadata Governance Dashboard"
+                "# Metadata Governance Dashboard - Executive Overview"
               ]
             }
           },
@@ -450,10 +514,10 @@
             }
           },
           "position": {
-            "x": 6,
+            "x": 8,
             "y": 2,
-            "width": 6,
-            "height": 1
+            "width": 4,
+            "height": 2
           }
         },
         {
@@ -478,7 +542,7 @@
               "version": 2,
               "frame": {
                 "showTitle": true,
-                "title": "Completeness %"
+                "title": "Average Table Completeness (%)"
               },
               "widgetType": "counter",
               "encodings": {
@@ -493,9 +557,9 @@
           },
           "position": {
             "x": 0,
-            "y": 3,
-            "width": 3,
-            "height": 3
+            "y": 5,
+            "width": 6,
+            "height": 2
           }
         },
         {
@@ -520,7 +584,7 @@
               "version": 2,
               "frame": {
                 "showTitle": true,
-                "title": "Certified %"
+                "title": "Certified (% of Columns)"
               },
               "widgetType": "counter",
               "encodings": {
@@ -534,10 +598,10 @@
             }
           },
           "position": {
-            "x": 3,
-            "y": 6,
-            "width": 3,
-            "height": 3
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 2
           }
         },
         {
@@ -562,7 +626,7 @@
               "version": 2,
               "frame": {
                 "showTitle": true,
-                "title": "Owned %"
+                "title": "Owned (% of Columns)"
               },
               "widgetType": "counter",
               "encodings": {
@@ -577,9 +641,9 @@
           },
           "position": {
             "x": 0,
-            "y": 6,
-            "width": 3,
-            "height": 3
+            "y": 9,
+            "width": 12,
+            "height": 2
           }
         },
         {
@@ -592,8 +656,8 @@
                   "datasetName": "3aef6650",
                   "fields": [
                     {
-                      "name": "sum(total_pii_noncompliant)",
-                      "expression": "SUM(`total_pii_noncompliant`)"
+                      "name": "sum(pct_pii_compliant)",
+                      "expression": "SUM(`pct_pii_compliant`)"
                     }
                   ],
                   "disaggregated": false
@@ -604,12 +668,12 @@
               "version": 2,
               "frame": {
                 "showTitle": true,
-                "title": "Unlabeled Risk Count"
+                "title": "PII-Compliant (% of Columns)"
               },
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "sum(total_pii_noncompliant)"
+                  "fieldName": "sum(pct_pii_compliant)"
                 }
               },
               "data": {
@@ -618,10 +682,10 @@
             }
           },
           "position": {
-            "x": 3,
-            "y": 3,
-            "width": 3,
-            "height": 3
+            "x": 0,
+            "y": 13,
+            "width": 12,
+            "height": 2
           }
         },
         {
@@ -660,15 +724,74 @@
             }
           },
           "position": {
-            "x": 0,
+            "x": 4,
             "y": 2,
-            "width": 6,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "c6d9b41a",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"color:#077A9D;font-size:18px\">Data Overview</span>"
+              ],
+              "verticalAlign": "VERTICAL_ALIGN_CENTER"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
             "height": 1
           }
         },
         {
           "widget": {
-            "name": "da58f8e3",
+            "name": "d4f15f6b",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "3aef6650",
+                  "fields": [
+                    {
+                      "name": "sum(pct_structurally_compliant)",
+                      "expression": "SUM(`pct_structurally_compliant`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Structurally Compliant (% of Tables)"
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(pct_structurally_compliant)"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ac9ab263",
             "queries": [
               {
                 "name": "main_query",
@@ -735,238 +858,40 @@
           },
           "position": {
             "x": 6,
-            "y": 3,
+            "y": 5,
             "width": 6,
-            "height": 6
+            "height": 4
           }
         },
         {
           "widget": {
-            "name": "bba4b9f1",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "71b9ecb2",
-                  "fields": [
-                    {
-                      "name": "table_completeness_pct",
-                      "expression": "`table_completeness_pct`"
-                    },
-                    {
-                      "name": "maturity_tier",
-                      "expression": "`maturity_tier`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "frame": {
-                "title": "Table Completeness",
-                "showTitle": true
-              },
-              "widgetType": "table",
-              "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "table_completeness_pct"
-                  },
-                  {
-                    "fieldName": "maturity_tier"
-                  }
-                ]
-              },
-              "data": {
-                "queryName": "main_query"
-              }
+            "name": "2ae05087",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"color:#077A9D;font-size:18px\">Overall Data Health</span>"
+              ],
+              "verticalAlign": "VERTICAL_ALIGN_CENTER"
             }
           },
           "position": {
             "x": 0,
-            "y": 18,
-            "width": 4,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "8124e41e",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "b7e1e9ba",
-                  "fields": [
-                    {
-                      "name": "pii_non_compliant_count",
-                      "expression": "`pii_non_compliant_count`"
-                    },
-                    {
-                      "name": "unowned_count",
-                      "expression": "`unowned_count`"
-                    },
-                    {
-                      "name": "uncertified_count",
-                      "expression": "`uncertified_count`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "frame": {
-                "title": "Table Compliance and Risk",
-                "showTitle": true
-              },
-              "widgetType": "table",
-              "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "pii_non_compliant_count"
-                  },
-                  {
-                    "fieldName": "unowned_count"
-                  },
-                  {
-                    "fieldName": "uncertified_count"
-                  }
-                ]
-              },
-              "data": {
-                "queryName": "main_query"
-              }
-            }
-          },
-          "position": {
-            "x": 4,
-            "y": 18,
-            "width": 8,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "1f9c7f84",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "8cb2e921",
-                  "fields": [
-                    {
-                      "name": "column_name",
-                      "expression": "`column_name`"
-                    },
-                    {
-                      "name": "row_completeness_pct",
-                      "expression": "`row_completeness_pct`"
-                    },
-                    {
-                      "name": "pii_non_compliant",
-                      "expression": "`pii_non_compliant`"
-                    },
-                    {
-                      "name": "unowned",
-                      "expression": "`unowned`"
-                    },
-                    {
-                      "name": "uncertified",
-                      "expression": "`uncertified`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "frame": {
-                "title": "Column Drilldown",
-                "showTitle": true
-              },
-              "widgetType": "table",
-              "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "column_name"
-                  },
-                  {
-                    "fieldName": "row_completeness_pct"
-                  },
-                  {
-                    "fieldName": "pii_non_compliant"
-                  },
-                  {
-                    "fieldName": "unowned"
-                  },
-                  {
-                    "fieldName": "uncertified"
-                  }
-                ]
-              },
-              "data": {
-                "queryName": "main_query"
-              }
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 20,
+            "y": 4,
             "width": 12,
-            "height": 5
+            "height": 1
           }
         },
         {
           "widget": {
-            "name": "select-table",
+            "name": "627fb2b0",
             "queries": [
               {
-                "name": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca755b1514803abcb50acc89e2_logical_table_key",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "71b9ecb2",
+                  "datasetName": "3aef6650",
                   "fields": [
                     {
-                      "name": "logical_table_key",
-                      "expression": "`logical_table_key`"
-                    },
-                    {
-                      "name": "logical_table_key_associativity",
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
-                    }
-                  ],
-                  "disaggregated": false
-                }
-              },
-              {
-                "name": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca854b1fa59e5016161e4b7f15_logical_table_key",
-                "query": {
-                  "datasetName": "b7e1e9ba",
-                  "fields": [
-                    {
-                      "name": "logical_table_key",
-                      "expression": "`logical_table_key`"
-                    },
-                    {
-                      "name": "logical_table_key_associativity",
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
-                    }
-                  ],
-                  "disaggregated": false
-                }
-              },
-              {
-                "name": "parameter_dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca987e102ba24db2d108f09ac8_logical_table_key",
-                "query": {
-                  "datasetName": "8cb2e921",
-                  "parameters": [
-                    {
-                      "name": "logical_table_key",
-                      "keyword": "logical_table_key"
+                      "name": "sum(total_databases)",
+                      "expression": "SUM(`total_databases`)"
                     }
                   ],
                   "disaggregated": false
@@ -977,41 +902,56 @@
               "version": 2,
               "frame": {
                 "showTitle": true,
-                "showDescription": false,
-                "title": "      Select Table"
+                "title": "Total Databases"
               },
-              "widgetType": "filter-single-select",
+              "widgetType": "counter",
               "encodings": {
-                "fields": [
-                  {
-                    "fieldName": "logical_table_key",
-                    "queryName": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca755b1514803abcb50acc89e2_logical_table_key"
-                  },
-                  {
-                    "parameterName": "logical_table_key",
-                    "queryName": "parameter_dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca987e102ba24db2d108f09ac8_logical_table_key"
-                  },
-                  {
-                    "fieldName": "logical_table_key",
-                    "queryName": "dashboards/01f18ec9addf1d8f8ad28e9f30c3e9f1/datasets/01f18eca854b1fa59e5016161e4b7f15_logical_table_key"
-                  }
-                ]
+                "value": {
+                  "fieldName": "sum(total_databases)"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 17,
+            "y": 2,
+            "width": 4,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "fb9211de",
+      "displayName": "Database Insights",
+      "layout": [
+        {
+          "widget": {
+            "name": "baf60f1e",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Metadata Governance Dashboard - Database Insights"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
             "width": 12,
             "height": 1
           }
         },
         {
           "widget": {
-            "name": "c6d9b41a",
+            "name": "8e7eed32",
             "multilineTextboxSpec": {
               "lines": [
-                "<span style=\"color: #077A9D;font-size: 18px;\">Overall Data View</span>"
+                "<span style=\"color:#077A9D;font-size:18px\">Database Drilldown</span>"
               ],
               "verticalAlign": "VERTICAL_ALIGN_CENTER"
             }
@@ -1025,10 +965,422 @@
         },
         {
           "widget": {
-            "name": "1bae8526",
+            "name": "select-metric",
+            "queries": [
+              {
+                "name": "dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec1667af2b47defc77509a_database_name",
+                "query": {
+                  "datasetName": "adc67b9d",
+                  "fields": [
+                    {
+                      "name": "database_name",
+                      "expression": "`database_name`"
+                    },
+                    {
+                      "name": "database_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f19109a213131cbf515b8ea2da05a4_selected_database",
+                "query": {
+                  "datasetName": "72bb4ea7",
+                  "parameters": [
+                    {
+                      "name": "selected_database",
+                      "keyword": "selected_database"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Select Database"
+              },
+              "disallowAll": true,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "database_name",
+                    "queryName": "dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec1667af2b47defc77509a_database_name"
+                  },
+                  {
+                    "parameterName": "selected_database",
+                    "queryName": "parameter_dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f19109a213131cbf515b8ea2da05a4_selected_database"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "001e1aec",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "72bb4ea7",
+                  "fields": [
+                    {
+                      "name": "metric_name",
+                      "expression": "`metric_name`"
+                    },
+                    {
+                      "name": "database_selected",
+                      "expression": "`database_selected`"
+                    },
+                    {
+                      "name": "overall_avg",
+                      "expression": "`overall_avg`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Bar",
+                "showTitle": true
+              },
+              "version": 3,
+              "mark": {
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "metric_name",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "database_selected"
+                    },
+                    {
+                      "fieldName": "overall_avg"
+                    }
+                  ]
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "61c89728",
             "multilineTextboxSpec": {
               "lines": [
-                "<span style=\"font-size: 18px;color: #077A9D;\">Granular Data View</span>"
+                "<span style=\"color:#077A9D;font-size:18px\">Database Comparison</span>"
+              ],
+              "verticalAlign": "VERTICAL_ALIGN_CENTER"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "009541b1",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "10bb0761",
+                  "fields": [
+                    {
+                      "name": "database_name",
+                      "expression": "`database_name`"
+                    },
+                    {
+                      "name": "avg_governance_rank",
+                      "expression": "`avg_governance_rank`"
+                    },
+                    {
+                      "name": "avg_completeness_pct",
+                      "expression": "`avg_completeness_pct`"
+                    },
+                    {
+                      "name": "pct_structurally_compliant",
+                      "expression": "`pct_structurally_compliant`"
+                    },
+                    {
+                      "name": "pct_owned",
+                      "expression": "`pct_owned`"
+                    },
+                    {
+                      "name": "pct_certified",
+                      "expression": "`pct_certified`"
+                    },
+                    {
+                      "name": "pct_pii_compliant",
+                      "expression": "`pct_pii_compliant`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "database_name"
+                  },
+                  {
+                    "fieldName": "avg_governance_rank"
+                  },
+                  {
+                    "fieldName": "avg_completeness_pct"
+                  },
+                  {
+                    "fieldName": "pct_structurally_compliant"
+                  },
+                  {
+                    "fieldName": "pct_owned"
+                  },
+                  {
+                    "fieldName": "pct_certified"
+                  },
+                  {
+                    "fieldName": "pct_pii_compliant"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 12,
+            "height": 9
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "5ae281dd",
+      "displayName": "Table Insights",
+      "layout": [
+        {
+          "widget": {
+            "name": "5debaa94",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Metadata Governance Dashboard - Table Insights"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "1e09d25c",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"color:#077A9D;font-size:18px\">Table Drilldown</span>"
+              ],
+              "verticalAlign": "VERTICAL_ALIGN_CENTER"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "afffefc1",
+            "queries": [
+              {
+                "name": "dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec1659bacf1a120f5b44b1_logical_table_key",
+                "query": {
+                  "datasetName": "31139d0a",
+                  "fields": [
+                    {
+                      "name": "logical_table_key",
+                      "expression": "`logical_table_key`"
+                    },
+                    {
+                      "name": "logical_table_key_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191b50b5e155c901fad6e22df03cb_selected_table",
+                "query": {
+                  "datasetName": "c3f49f09",
+                  "parameters": [
+                    {
+                      "name": "selected_table",
+                      "keyword": "selected_table"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "disallowAll": true,
+              "frame": {
+                "showTitle": true,
+                "title": "Select Table"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "logical_table_key",
+                    "queryName": "dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec1659bacf1a120f5b44b1_logical_table_key"
+                  },
+                  {
+                    "parameterName": "selected_table",
+                    "queryName": "parameter_dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191b50b5e155c901fad6e22df03cb_selected_table"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "df7939af",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c3f49f09",
+                  "fields": [
+                    {
+                      "name": "metric_name",
+                      "expression": "`metric_name`"
+                    },
+                    {
+                      "name": "table_selected",
+                      "expression": "`table_selected`"
+                    },
+                    {
+                      "name": "overall_avg",
+                      "expression": "`overall_avg`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Bar",
+                "showTitle": true
+              },
+              "version": 3,
+              "mark": {
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "metric_name",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "table_selected"
+                    },
+                    {
+                      "fieldName": "overall_avg"
+                    }
+                  ]
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "f8df8317",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"color:#077A9D;font-size:18px\">Flagged Tables</span>"
               ],
               "verticalAlign": "VERTICAL_ALIGN_CENTER"
             }
@@ -1042,70 +1394,7 @@
         },
         {
           "widget": {
-            "name": "select-flag-type",
-            "queries": [
-              {
-                "name": "dashboards/01f1901ad8cd105e98c764e4dbd38638/datasets/01f19025791714b9aa177dbe1f88bff2_flag_type",
-                "query": {
-                  "datasetName": "64fd54d2",
-                  "fields": [
-                    {
-                      "name": "flag_type",
-                      "expression": "`flag_type`"
-                    },
-                    {
-                      "name": "flag_type_associativity",
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
-                    }
-                  ],
-                  "disaggregated": false
-                }
-              },
-              {
-                "name": "parameter_dashboards/01f1901ad8cd105e98c764e4dbd38638/datasets/01f19025791714b9aa177dbe1f88bff2_flag_type",
-                "query": {
-                  "datasetName": "64fd54d2",
-                  "parameters": [
-                    {
-                      "name": "flag_type",
-                      "keyword": "flag_type"
-                    }
-                  ],
-                  "disaggregated": false
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "frame": {
-                "showTitle": true,
-                "title": "Select Flag Type"
-              },
-              "widgetType": "filter-single-select",
-              "encodings": {
-                "fields": [
-                  {
-                    "fieldName": "flag_type",
-                    "queryName": "dashboards/01f1901ad8cd105e98c764e4dbd38638/datasets/01f19025791714b9aa177dbe1f88bff2_flag_type"
-                  },
-                  {
-                    "parameterName": "flag_type",
-                    "queryName": "parameter_dashboards/01f1901ad8cd105e98c764e4dbd38638/datasets/01f19025791714b9aa177dbe1f88bff2_flag_type"
-                  }
-                ]
-              }
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 10,
-            "width": 12,
-            "height": 1
-          }
-        },
-        {
-          "widget": {
-            "name": "flagged-tables-result",
+            "name": "f9956a8d",
             "queries": [
               {
                 "name": "main_query",
@@ -1115,6 +1404,14 @@
                     {
                       "name": "logical_table_key",
                       "expression": "`logical_table_key`"
+                    },
+                    {
+                      "name": "database_name",
+                      "expression": "`database_name`"
+                    },
+                    {
+                      "name": "schema_name",
+                      "expression": "`schema_name`"
                     },
                     {
                       "name": "table_name",
@@ -1131,15 +1428,17 @@
             ],
             "spec": {
               "version": 2,
-              "frame": {
-                "title": "Flagged Tables",
-                "showTitle": true
-              },
               "widgetType": "table",
               "encodings": {
                 "columns": [
                   {
                     "fieldName": "logical_table_key"
+                  },
+                  {
+                    "fieldName": "database_name"
+                  },
+                  {
+                    "fieldName": "schema_name"
                   },
                   {
                     "fieldName": "table_name"
@@ -1157,6 +1456,383 @@
           "position": {
             "x": 0,
             "y": 11,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "select-flag",
+            "queries": [
+              {
+                "name": "dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec167f8c62a4de50d85f71_flag_type",
+                "query": {
+                  "datasetName": "7fd58c4e",
+                  "fields": [
+                    {
+                      "name": "flag_type",
+                      "expression": "`flag_type`"
+                    },
+                    {
+                      "name": "flag_type_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec16839a3f0f4c999126a5_flag_type",
+                "query": {
+                  "datasetName": "64fd54d2",
+                  "parameters": [
+                    {
+                      "name": "flag_type",
+                      "keyword": "flag_type"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Select Flag"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "flag_type",
+                    "queryName": "dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec167f8c62a4de50d85f71_flag_type"
+                  },
+                  {
+                    "parameterName": "flag_type",
+                    "queryName": "parameter_dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec16839a3f0f4c999126a5_flag_type"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "806666c8",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"color:#077A9D;font-size:18px\">Table Comparison</span>"
+              ],
+              "verticalAlign": "VERTICAL_ALIGN_CENTER"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "1815cfbd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "860fcda0",
+                  "fields": [
+                    {
+                      "name": "logical_table_key",
+                      "expression": "`logical_table_key`"
+                    },
+                    {
+                      "name": "total_columns",
+                      "expression": "`total_columns`"
+                    },
+                    {
+                      "name": "avg_governance_rank",
+                      "expression": "`avg_governance_rank`"
+                    },
+                    {
+                      "name": "table_completeness_pct",
+                      "expression": "`table_completeness_pct`"
+                    },
+                    {
+                      "name": "pct_owned",
+                      "expression": "`pct_owned`"
+                    },
+                    {
+                      "name": "pct_certified",
+                      "expression": "`pct_certified`"
+                    },
+                    {
+                      "name": "pct_pii_compliant",
+                      "expression": "`pct_pii_compliant`"
+                    },
+                    {
+                      "name": "maturity_tier",
+                      "expression": "`maturity_tier`"
+                    },
+                    {
+                      "name": "is_structurally_compliant",
+                      "expression": "`is_structurally_compliant`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "logical_table_key"
+                  },
+                  {
+                    "fieldName": "total_columns"
+                  },
+                  {
+                    "fieldName": "avg_governance_rank"
+                  },
+                  {
+                    "fieldName": "table_completeness_pct"
+                  },
+                  {
+                    "fieldName": "pct_owned"
+                  },
+                  {
+                    "fieldName": "pct_certified"
+                  },
+                  {
+                    "fieldName": "pct_pii_compliant"
+                  },
+                  {
+                    "fieldName": "maturity_tier"
+                  },
+                  {
+                    "fieldName": "is_structurally_compliant"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 12,
+            "height": 9
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "647547b6",
+      "displayName": "Column Insights",
+      "layout": [
+        {
+          "widget": {
+            "name": "6270a136",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Metadata Governance Dashboard - Column Insights"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "bb6ef612",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"color:#077A9D;font-size:18px\">Column Drilldown</span>"
+              ],
+              "verticalAlign": "VERTICAL_ALIGN_CENTER"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "f617e715",
+            "queries": [
+              {
+                "name": "dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec1659bacf1a120f5b44b1_logical_table_key",
+                "query": {
+                  "datasetName": "31139d0a",
+                  "fields": [
+                    {
+                      "name": "logical_table_key",
+                      "expression": "`logical_table_key`"
+                    },
+                    {
+                      "name": "logical_table_key_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec167c8e794f2a1dc6af1c_logical_table_key",
+                "query": {
+                  "datasetName": "8cb2e921",
+                  "parameters": [
+                    {
+                      "name": "logical_table_key",
+                      "keyword": "logical_table_key"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "disallowAll": true,
+              "frame": {
+                "showTitle": true,
+                "title": "Select Table"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "logical_table_key",
+                    "queryName": "dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec1659bacf1a120f5b44b1_logical_table_key"
+                  },
+                  {
+                    "parameterName": "logical_table_key",
+                    "queryName": "parameter_dashboards/01f191060cec1166b720ace5da0d4ec6/datasets/01f191060cec167c8e794f2a1dc6af1c_logical_table_key"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "c6661f68",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "8cb2e921",
+                  "fields": [
+                    {
+                      "name": "column_id",
+                      "expression": "`column_id`"
+                    },
+                    {
+                      "name": "column_name",
+                      "expression": "`column_name`"
+                    },
+                    {
+                      "name": "row_completeness_pct",
+                      "expression": "`row_completeness_pct`"
+                    },
+                    {
+                      "name": "unowned",
+                      "expression": "`unowned`"
+                    },
+                    {
+                      "name": "data_steward",
+                      "expression": "`data_steward`"
+                    },
+                    {
+                      "name": "uncertified",
+                      "expression": "`uncertified`"
+                    },
+                    {
+                      "name": "pii_non_compliant",
+                      "expression": "`pii_non_compliant`"
+                    },
+                    {
+                      "name": "security_classification",
+                      "expression": "`security_classification`"
+                    },
+                    {
+                      "name": "certification_level",
+                      "expression": "`certification_level`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "column_id"
+                  },
+                  {
+                    "fieldName": "column_name"
+                  },
+                  {
+                    "fieldName": "row_completeness_pct"
+                  },
+                  {
+                    "fieldName": "unowned"
+                  },
+                  {
+                    "fieldName": "data_steward"
+                  },
+                  {
+                    "fieldName": "uncertified"
+                  },
+                  {
+                    "fieldName": "pii_non_compliant"
+                  },
+                  {
+                    "fieldName": "security_classification"
+                  },
+                  {
+                    "fieldName": "certification_level"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
             "width": 12,
             "height": 6
           }
