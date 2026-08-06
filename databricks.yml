@@ -1,0 +1,18 @@
+bundle:
+  name: metadata-governance-platform
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-7be69a48-9d56.cloud.databricks.com
+
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-7be69a48-9d56.cloud.databricks.com
+      root_path: /Shared/.bundle/prod/${bundle.name}
