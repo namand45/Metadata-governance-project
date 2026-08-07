@@ -4,13 +4,14 @@ resources:
       name: metadata_pipeline
       catalog: metadata_governance
       target: bronze
+      serverless: true
       libraries:
-         - file:
-           path: ../src/pipeline/bronze_layer.py
-         - file:
-           path: ../src/pipeline/silver_layer.sql
-         - file:
-           path: ../src/pipeline/gold_layer.py
+       - notebook:
+          path: ../src/pipeline/bronze_layer.py
+       - notebook:
+          path: ../src/pipeline/silver_layer.sql
+       - notebook:
+          path: ../src/pipeline/gold_layer.py
       configuration:
         source_path: /Volumes/metadata_governance/bronze/raw_data/
       continuous: false
