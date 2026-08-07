@@ -5,12 +5,12 @@ resources:
       catalog: metadata_governance
       target: bronze
       libraries:
-        - file:
-            path: ../src/pipeline/bronze/bronze_layer.py
-        - file:
-            path: ../src/pipeline/silver/silver_layer.sql
-        - file:
-            path: ../src/pipeline/gold/gold_layer.py
+         - file:
+           path: ../src/pipeline/bronze_layer.py
+         - file:
+           path: ../src/pipeline/silver_layer.sql
+         - file:
+           path: ../src/pipeline/gold_layer.py
       configuration:
         source_path: /Volumes/metadata_governance/bronze/raw_data/
       continuous: false
