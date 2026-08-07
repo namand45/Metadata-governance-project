@@ -2,4 +2,5 @@ resources:
   dashboards:
     governance_dashboard:
       display_name: "Dashboard"
+      warehouse_id: 6d928621ebc81171
       file_path: ../dashboard/Dashboard.lvdash.json
