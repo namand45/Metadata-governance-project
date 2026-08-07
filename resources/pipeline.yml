@@ -14,4 +14,4 @@ resources:
       configuration:
         source_path: /Volumes/metadata_governance/bronze/raw_data/
       continuous: false
-      development: true
+      development: false
