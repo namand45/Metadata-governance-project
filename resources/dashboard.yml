@@ -1,0 +1,5 @@
+resources:
+  dashboards:
+    governance_dashboard:
+      display_name: "Dashboard"
+      file_path: ../dashboard/Dashboard.lvdash.json

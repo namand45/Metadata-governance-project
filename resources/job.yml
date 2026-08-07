@@ -4,27 +4,15 @@ resources:
       name: metadata_refresh
 
       schedule:
-        quartz_cron_expression: "0 0 2 * * ?"   # daily at 02:00
+        quartz_cron_expression: "0 0 2 * * ?"
         timezone_id: America/New_York
-        pause_status: PAUSED
+        pause_status: UNPAUSED
 
       email_notifications:
         on_failure:
-          - anirudh.uppilimukundan@genpact.com
+          - shanaya.mehra@genpact.com
 
       tasks:
-        - task_key: bronze_layer
-          notebook_task:
-            notebook_path: ../pipeline/bronze_layer.ipynb
-
-        - task_key: silver_layer
-          depends_on:
-            - task_key: bronze_layer
-          notebook_task:
-            notebook_path: ../pipeline/silver_layer.ipynb
-
-        - task_key: gold_layer
-          depends_on:
-            - task_key: silver_layer
-          notebook_task:
-            notebook_path: ../pipeline/gold_layer.ipynb
+        - task_key: refresh_metadata
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.metadata_pipeline.id}
