@@ -1,0 +1,18 @@
+resources:
+  jobs:
+    metadata_refresh:
+      name: metadata_refresh
+
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: America/New_York
+        pause_status: UNPAUSED
+
+      email_notifications:
+        on_failure:
+          - shanaya.mehra@genpact.com
+
+      tasks:
+        - task_key: refresh_metadata
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.metadata_pipeline.id}
